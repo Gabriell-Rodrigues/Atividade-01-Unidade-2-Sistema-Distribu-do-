@@ -12,3 +12,19 @@ Os arquivos usados nos testes (5 MB, 50 MB e 500 MB) não ficam no repositório.
 mvn package
 java -cp target/transferencia.jar transferencia.GeradorArquivos arquivos 5 50 500
 ```
+
+## Cliente-servidor
+
+O servidor envia o tamanho do arquivo e depois o conteúdo. O cliente recebe tudo, descarta os bytes e mostra o tempo desde a conexão até o último byte.
+
+Servidor sequencial (atende um cliente por vez):
+
+```bash
+java -cp target/transferencia.jar transferencia.ServidorSequencial 5000 arquivos/arquivo_50MB.bin
+```
+
+Cliente:
+
+```bash
+java -cp target/transferencia.jar transferencia.Cliente localhost 5000 cliente1
+```
