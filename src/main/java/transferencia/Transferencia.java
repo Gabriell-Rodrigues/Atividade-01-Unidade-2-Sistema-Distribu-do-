@@ -30,6 +30,15 @@ public class Transferencia {
         saida.flush();
     }
 
+    public static void atender(Socket cliente, Path arquivo) {
+        try (cliente) {
+            enviar(arquivo, cliente);
+            System.out.println("arquivo enviado para " + cliente.getRemoteSocketAddress());
+        } catch (IOException e) {
+            System.out.println("erro no envio: " + e.getMessage());
+        }
+    }
+
     public static long receber(Socket socket) throws IOException {
         DataInputStream entrada = new DataInputStream(
                 new BufferedInputStream(socket.getInputStream(), TAMANHO_BUFFER));

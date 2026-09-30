@@ -23,6 +23,12 @@ Servidor sequencial (atende um cliente por vez):
 java -cp target/transferencia.jar transferencia.ServidorSequencial 5000 arquivos/arquivo_50MB.bin
 ```
 
+Servidor com uma thread por cliente (atende todos ao mesmo tempo):
+
+```bash
+java -cp target/transferencia.jar transferencia.ServidorThreads 5000 arquivos/arquivo_50MB.bin
+```
+
 Cliente:
 
 ```bash
