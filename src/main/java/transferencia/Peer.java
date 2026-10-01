@@ -6,6 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
@@ -14,11 +15,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.BitSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.TreeMap;
 
 public class Peer {
 
@@ -28,11 +32,14 @@ public class Peer {
     private final String hostTracker;
     private final int portaTracker;
     private final ServerSocket servidor;
-    private final Map<String, Conexao> conexoes = new HashMap<>();
+    private final Random aleatorio = new Random();
 
     private long tamanho = -1;
     private int totalPedacos;
-    private boolean[] pedacos;
+    private BitSet pedacos;
+    private final BitSet emAndamento = new BitSet();
+    private final Set<String> conectados = new HashSet<>();
+    private final Map<String, Integer> origem = new TreeMap<>();
     private FileChannel arquivo;
 
     Peer(String nome, String hostTracker, int portaTracker, int porta) throws IOException {
@@ -55,55 +62,70 @@ public class Peer {
         }
     }
 
-    void semear(Path caminho) throws IOException {
+    void semear(Path caminho) throws Exception {
         tamanho = Files.size(caminho);
         preparar(FileChannel.open(caminho, StandardOpenOption.READ), true);
-        registrar();
+        registrarComEspera();
         System.out.println(nome + " semeando " + caminho + " (" + totalPedacos + " pedacos)");
     }
 
     void baixar() throws Exception {
-        long inicio = System.nanoTime();
-
-        List<String> outros = registrar();
+        List<String> outros = registrarComEspera();
         while (tamanho < 0) {
             Thread.sleep(500);
-            outros = registrar();
+            outros = registrarComEspera();
         }
+        long inicio = System.nanoTime();
+
         Path parcial = Files.createTempFile("peer-" + nome + "-", ".part");
         parcial.toFile().deleteOnExit();
         preparar(FileChannel.open(parcial, StandardOpenOption.READ, StandardOpenOption.WRITE), false);
 
-        for (int i = 0; i < totalPedacos; i++) {
-            while (!tem(i)) {
-                Collections.shuffle(outros);
-                for (String outro : outros) {
-                    if (baixarPedaco(outro, i)) {
-                        break;
-                    }
+        while (true) {
+            for (String outro : outros) {
+                iniciarDownload(outro);
+            }
+            synchronized (this) {
+                if (!completo()) {
+                    wait(1000);
                 }
-                if (!tem(i)) {
-                    Thread.sleep(200);
-                    outros = registrar();
+                if (completo()) {
+                    break;
                 }
             }
+            outros = registrarComEspera();
         }
 
         double segundos = (System.nanoTime() - inicio) / 1e9;
         System.out.println(String.format(Locale.ROOT, "%s recebeu %d bytes em %.3f s", nome, tamanho, segundos));
+        synchronized (this) {
+            System.out.println(nome + " origem dos pedacos: " + origem);
+        }
         System.out.println(nome + " continua compartilhando o arquivo");
     }
 
     void preparar(FileChannel canal, boolean completo) {
         arquivo = canal;
         totalPedacos = (int) ((tamanho + TAMANHO_PEDACO - 1) / TAMANHO_PEDACO);
-        pedacos = new boolean[totalPedacos];
+        pedacos = new BitSet(totalPedacos);
         if (completo) {
-            for (int i = 0; i < totalPedacos; i++) {
-                pedacos[i] = true;
-            }
+            pedacos.set(0, totalPedacos);
         }
         new Thread(this::aceitarConexoes).start();
+    }
+
+    List<String> registrarComEspera() throws Exception {
+        int tentativas = 0;
+        while (true) {
+            try {
+                return registrar();
+            } catch (ConnectException e) {
+                if (++tentativas == 60) {
+                    throw e;
+                }
+                Thread.sleep(500);
+            }
+        }
     }
 
     List<String> registrar() throws IOException {
@@ -112,7 +134,7 @@ public class Peer {
             DataInputStream entrada = new DataInputStream(socket.getInputStream());
 
             saida.writeInt(servidor.getLocalPort());
-            saida.writeLong(pedacos != null && todosPedacos() ? tamanho : -1);
+            saida.writeLong(pedacos != null && completo() ? tamanho : -1);
             saida.flush();
 
             long tamanhoInformado = entrada.readLong();
@@ -128,32 +150,84 @@ public class Peer {
         }
     }
 
-    boolean baixarPedaco(String endereco, int indice) {
-        try {
-            Conexao conexao = conexoes.get(endereco);
-            if (conexao == null) {
-                conexao = new Conexao(endereco);
-                conexoes.put(endereco, conexao);
-            }
-            conexao.saida.writeInt(indice);
-            conexao.saida.flush();
-
-            int tamanhoPedaco = conexao.entrada.readInt();
-            if (tamanhoPedaco < 0) {
-                return false;
-            }
-            byte[] dados = new byte[tamanhoPedaco];
-            conexao.entrada.readFully(dados);
-            gravar(indice, dados);
-            marcar(indice);
-            return true;
-        } catch (IOException e) {
-            Conexao conexao = conexoes.remove(endereco);
-            if (conexao != null) {
-                conexao.fechar();
-            }
-            return false;
+    synchronized void iniciarDownload(String endereco) {
+        if (completo() || !conectados.add(endereco)) {
+            return;
         }
+        new Thread(() -> baixarDe(endereco)).start();
+    }
+
+    void baixarDe(String endereco) {
+        int atual = -1;
+        try (Conexao conexao = new Conexao(endereco)) {
+            BitSet doOutro = conexao.pedirMapa();
+            while (!completo()) {
+                atual = escolherPedaco(doOutro);
+                if (atual < 0) {
+                    Thread.sleep(100);
+                    doOutro = conexao.pedirMapa();
+                    continue;
+                }
+                byte[] dados = conexao.pedirPedaco(atual);
+                if (dados == null) {
+                    liberar(atual);
+                    atual = -1;
+                    doOutro = conexao.pedirMapa();
+                    continue;
+                }
+                gravar(atual, dados);
+                marcar(atual, endereco);
+                atual = -1;
+            }
+        } catch (IOException | InterruptedException e) {
+            if (atual >= 0) {
+                liberar(atual);
+            }
+        } finally {
+            synchronized (this) {
+                conectados.remove(endereco);
+            }
+        }
+    }
+
+    synchronized int escolherPedaco(BitSet doOutro) {
+        List<Integer> candidatos = new ArrayList<>();
+        for (int i = doOutro.nextSetBit(0); i >= 0 && i < totalPedacos; i = doOutro.nextSetBit(i + 1)) {
+            if (!pedacos.get(i) && !emAndamento.get(i)) {
+                candidatos.add(i);
+            }
+        }
+        if (candidatos.isEmpty()) {
+            return -1;
+        }
+        int escolhido = candidatos.get(aleatorio.nextInt(candidatos.size()));
+        emAndamento.set(escolhido);
+        return escolhido;
+    }
+
+    synchronized void marcar(int indice, String endereco) {
+        pedacos.set(indice);
+        emAndamento.clear(indice);
+        origem.merge(endereco, 1, Integer::sum);
+        if (completo()) {
+            notifyAll();
+        }
+    }
+
+    synchronized void liberar(int indice) {
+        emAndamento.clear(indice);
+    }
+
+    synchronized boolean completo() {
+        return pedacos.cardinality() == totalPedacos;
+    }
+
+    synchronized boolean tem(int indice) {
+        return pedacos.get(indice);
+    }
+
+    synchronized byte[] mapa() {
+        return pedacos.toByteArray();
     }
 
     void aceitarConexoes() {
@@ -173,13 +247,22 @@ public class Peer {
             DataInputStream entrada = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
             DataOutputStream saida = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), TAMANHO_PEDACO + 4));
             while (true) {
-                int indice = entrada.readInt();
-                if (indice < 0 || indice >= totalPedacos || !tem(indice)) {
-                    saida.writeInt(-1);
+                byte comando = entrada.readByte();
+                if (comando == 'M') {
+                    byte[] mapa = mapa();
+                    saida.writeInt(mapa.length);
+                    saida.write(mapa);
+                } else if (comando == 'P') {
+                    int indice = entrada.readInt();
+                    if (indice < 0 || indice >= totalPedacos || !tem(indice)) {
+                        saida.writeInt(-1);
+                    } else {
+                        byte[] dados = ler(indice);
+                        saida.writeInt(dados.length);
+                        LimiteBanda.escrever(saida, dados, 0, dados.length);
+                    }
                 } else {
-                    byte[] dados = ler(indice);
-                    saida.writeInt(dados.length);
-                    saida.write(dados);
+                    throw new IOException("comando desconhecido: " + comando);
                 }
                 saida.flush();
             }
@@ -209,24 +292,7 @@ public class Peer {
         }
     }
 
-    synchronized boolean tem(int indice) {
-        return pedacos[indice];
-    }
-
-    synchronized void marcar(int indice) {
-        pedacos[indice] = true;
-    }
-
-    synchronized boolean todosPedacos() {
-        for (boolean temPedaco : pedacos) {
-            if (!temPedaco) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    static class Conexao {
+    static class Conexao implements AutoCloseable {
         final Socket socket;
         final DataInputStream entrada;
         final DataOutputStream saida;
@@ -235,15 +301,33 @@ public class Peer {
             String[] partes = endereco.split(":");
             socket = new Socket(partes[0], Integer.parseInt(partes[1]));
             entrada = new DataInputStream(new BufferedInputStream(socket.getInputStream(), TAMANHO_PEDACO + 4));
-            saida = new DataOutputStream(socket.getOutputStream());
+            saida = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         }
 
-        void fechar() {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                System.out.println("erro ao fechar conexao: " + e.getMessage());
+        BitSet pedirMapa() throws IOException {
+            saida.writeByte('M');
+            saida.flush();
+            byte[] mapa = new byte[entrada.readInt()];
+            entrada.readFully(mapa);
+            return BitSet.valueOf(mapa);
+        }
+
+        byte[] pedirPedaco(int indice) throws IOException {
+            saida.writeByte('P');
+            saida.writeInt(indice);
+            saida.flush();
+            int tamanhoPedaco = entrada.readInt();
+            if (tamanhoPedaco < 0) {
+                return null;
             }
+            byte[] dados = new byte[tamanhoPedaco];
+            entrada.readFully(dados);
+            return dados;
+        }
+
+        @Override
+        public void close() throws IOException {
+            socket.close();
         }
     }
 }

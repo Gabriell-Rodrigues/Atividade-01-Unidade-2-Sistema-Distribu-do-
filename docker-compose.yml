@@ -1,0 +1,50 @@
+x-app: &app
+  image: transferencia
+  pull_policy: never
+  volumes:
+    - arquivos:/arquivos
+
+services:
+  gerador:
+    <<: *app
+    build: .
+    profiles: ["arquivos"]
+    command: ["java", "-cp", "app.jar", "transferencia.GeradorArquivos", "/arquivos", "5", "50", "500"]
+
+  servidor:
+    <<: *app
+    profiles: ["cs"]
+    environment:
+      BANDA_MBPS: ${BANDA_MBPS:-100}
+      MODO: ${MODO:-Sequencial}
+      ARQUIVO: ${ARQUIVO:-arquivo_50MB.bin}
+      MAXIMO: ${MAXIMO:-4}
+    command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Servidor$$MODO 5000 /arquivos/$$ARQUIVO $$MAXIMO"]
+
+  cliente:
+    <<: *app
+    profiles: ["cs"]
+    command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Cliente servidor 5000 $$HOSTNAME"]
+
+  tracker:
+    <<: *app
+    profiles: ["p2p"]
+    command: ["java", "-Xmx256m", "-cp", "app.jar", "transferencia.Tracker", "6000"]
+
+  semeador:
+    <<: *app
+    profiles: ["p2p"]
+    environment:
+      BANDA_MBPS: ${BANDA_MBPS:-100}
+      ARQUIVO: ${ARQUIVO:-arquivo_50MB.bin}
+    command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Peer tracker 6000 7000 semeador /arquivos/$$ARQUIVO"]
+
+  peer:
+    <<: *app
+    profiles: ["p2p"]
+    environment:
+      BANDA_MBPS: ${BANDA_MBPS:-100}
+    command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Peer tracker 6000 7000 $$HOSTNAME"]
+
+volumes:
+  arquivos:

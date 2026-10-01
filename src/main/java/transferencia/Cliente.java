@@ -1,12 +1,12 @@
 package transferencia;
 
-import java.io.IOException;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.util.Locale;
 
 public class Cliente {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.out.println("uso: Cliente <host> <porta> [nome]");
             return;
@@ -15,10 +15,20 @@ public class Cliente {
         int porta = Integer.parseInt(args[1]);
         String nome = args.length > 2 ? args[2] : "cliente";
 
-        long inicio = System.nanoTime();
+        long inicio;
         long recebidos;
-        try (Socket socket = new Socket(host, porta)) {
-            recebidos = Transferencia.receber(socket);
+        int tentativas = 0;
+        while (true) {
+            inicio = System.nanoTime();
+            try (Socket socket = new Socket(host, porta)) {
+                recebidos = Transferencia.receber(socket);
+                break;
+            } catch (ConnectException e) {
+                if (++tentativas == 60) {
+                    throw e;
+                }
+                Thread.sleep(500);
+            }
         }
         double segundos = (System.nanoTime() - inicio) / 1e9;
 

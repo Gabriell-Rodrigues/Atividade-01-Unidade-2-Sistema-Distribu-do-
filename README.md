@@ -43,7 +43,7 @@ java -cp target/transferencia.jar transferencia.Cliente localhost 5000 cliente1
 
 ## P2P
 
-O arquivo é dividido em pedaços de 256 KB. O tracker guarda a lista de peers e o tamanho do arquivo. Cada peer baixa os pedaços dos outros peers e, ao mesmo tempo, envia para os outros os pedaços que já tem. Quando termina, continua compartilhando o arquivo.
+O arquivo é dividido em pedaços de 256 KB. O tracker guarda a lista de peers e o tamanho do arquivo. Cada peer abre uma conexão com cada outro peer, pede o mapa dos pedaços que ele tem e baixa, em paralelo, pedaços escolhidos ao acaso entre os que ainda faltam. Ao mesmo tempo, envia para os outros os pedaços que já tem. Quando termina, mostra de quais peers recebeu os pedaços e continua compartilhando o arquivo.
 
 Tracker:
 
@@ -63,3 +63,36 @@ Peers que baixam o arquivo (cada um em uma porta):
 java -cp target/transferencia.jar transferencia.Peer localhost 6000 7001 peer1
 java -cp target/transferencia.jar transferencia.Peer localhost 6000 7002 peer2
 ```
+
+## Limite de banda
+
+A variável de ambiente `BANDA_MBPS` limita o upload de cada servidor e de cada peer (em Mbit/s). Todas as threads de um mesmo processo dividem esse limite, como se fosse a placa de rede do nó. Sem a variável não há limite.
+
+## Docker
+
+Cada servidor, cliente e peer roda em um container, com upload limitado a 100 Mbit/s por padrão. Sem esse limite, como os containers estão na mesma máquina, a transferência seria quase instantânea e não daria para comparar as arquiteturas.
+
+Gerar a imagem e os arquivos de teste (uma vez):
+
+```bash
+docker compose run --rm gerador
+```
+
+Cliente-servidor (`MODO` pode ser `Sequencial`, `Threads` ou `Pool`; `MAXIMO` é o tamanho do pool):
+
+```bash
+MODO=Threads ARQUIVO=arquivo_50MB.bin docker compose up -d servidor
+docker compose up --scale cliente=4 cliente
+docker compose --profile cs down
+```
+
+P2P:
+
+```bash
+ARQUIVO=arquivo_50MB.bin docker compose up -d tracker semeador
+docker compose up -d --scale peer=4 peer
+docker compose logs -f peer
+docker compose --profile p2p down
+```
+
+No PowerShell, as variáveis são definidas antes do comando com `$env:MODO="Threads"`, `$env:ARQUIVO="arquivo_50MB.bin"` e `$env:BANDA_MBPS="100"`.

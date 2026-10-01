@@ -24,7 +24,7 @@ public class Transferencia {
         try (InputStream entrada = Files.newInputStream(arquivo)) {
             int lidos;
             while ((lidos = entrada.read(buffer)) != -1) {
-                saida.write(buffer, 0, lidos);
+                LimiteBanda.escrever(saida, buffer, 0, lidos);
             }
         }
         saida.flush();
