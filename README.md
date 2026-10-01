@@ -29,8 +29,37 @@ Servidor com uma thread por cliente (atende todos ao mesmo tempo):
 java -cp target/transferencia.jar transferencia.ServidorThreads 5000 arquivos/arquivo_50MB.bin
 ```
 
+Servidor com pool de threads (atende no máximo N clientes ao mesmo tempo, aqui N = 4):
+
+```bash
+java -cp target/transferencia.jar transferencia.ServidorPool 5000 arquivos/arquivo_50MB.bin 4
+```
+
 Cliente:
 
 ```bash
 java -cp target/transferencia.jar transferencia.Cliente localhost 5000 cliente1
+```
+
+## P2P
+
+O arquivo é dividido em pedaços de 256 KB. O tracker guarda a lista de peers e o tamanho do arquivo. Cada peer baixa os pedaços dos outros peers e, ao mesmo tempo, envia para os outros os pedaços que já tem. Quando termina, continua compartilhando o arquivo.
+
+Tracker:
+
+```bash
+java -cp target/transferencia.jar transferencia.Tracker 6000
+```
+
+Peer que começa com o arquivo completo (semeador):
+
+```bash
+java -cp target/transferencia.jar transferencia.Peer localhost 6000 7000 semeador arquivos/arquivo_50MB.bin
+```
+
+Peers que baixam o arquivo (cada um em uma porta):
+
+```bash
+java -cp target/transferencia.jar transferencia.Peer localhost 6000 7001 peer1
+java -cp target/transferencia.jar transferencia.Peer localhost 6000 7002 peer2
 ```
