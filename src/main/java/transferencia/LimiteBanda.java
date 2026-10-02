@@ -5,10 +5,12 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.concurrent.locks.LockSupport;
 
+// limita o upload do nó, já que todos os containers rodam na mesma máquina
 public class LimiteBanda {
 
     static final int BLOCO = 64 * 1024;
     static final long FOLGA_NANOS = 50_000_000L;
+    // um limite só para o processo inteiro, dividido entre as threads como a placa de rede
     static final LimiteBanda DO_PROCESSO = criar(System.getenv("BANDA_MBPS"));
 
     private final double bytesPorSegundo;
@@ -44,6 +46,7 @@ public class LimiteBanda {
         long liberadoEm;
         synchronized (this) {
             long agora = System.nanoTime();
+            // reserva o próximo intervalo livre; a folga compensa a thread que acordou atrasada
             proximoLivre = Math.max(proximoLivre, agora - FOLGA_NANOS) + (long) (bytes * 1e9 / bytesPorSegundo);
             liberadoEm = proximoLivre;
         }

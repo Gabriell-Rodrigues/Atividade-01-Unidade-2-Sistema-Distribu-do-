@@ -18,6 +18,7 @@ public class ServidorPool {
         Path arquivo = Path.of(args[1]);
         int maximo = Integer.parseInt(args[2]);
 
+        // com todas as threads ocupadas, as conexões novas esperam na fila do pool
         ExecutorService pool = Executors.newFixedThreadPool(maximo);
         try (ServerSocket servidor = new ServerSocket(porta)) {
             System.out.println("servidor com pool de " + maximo + " threads na porta " + porta + ", arquivo " + arquivo);

@@ -32,6 +32,7 @@ public class Tracker {
 
             int portaPeer = entrada.readInt();
             long tamanho = entrada.readLong();
+            // o IP vem da própria conexão; o peer informa só a porta em que atende
             String endereco = socket.getInetAddress().getHostAddress() + ":" + portaPeer;
 
             List<String> outros;

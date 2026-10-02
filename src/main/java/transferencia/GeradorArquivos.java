@@ -32,6 +32,7 @@ public class GeradorArquivos {
     }
 
     static void gerar(Path arquivo, int mb) throws IOException {
+        // semente fixa: o arquivo é sempre o mesmo em todas as execuções
         Random aleatorio = new Random(mb);
         byte[] bloco = new byte[1024 * 1024];
         try (OutputStream saida = Files.newOutputStream(arquivo)) {

@@ -15,6 +15,7 @@ ORDEM = ["Sequencial", "Threads", "Pool", "P2P"]
 NOMES = {"Sequencial": "Sequencial", "Threads": "Thread por cliente", "Pool": "Pool de threads", "P2P": "P2P"}
 
 
+# F/us: tempo para o servidor enviar uma cópia do arquivo
 def tempo_uma_copia(mb):
     return mb * 1048576 * 8 / (BANDA_MBPS * 1e6)
 

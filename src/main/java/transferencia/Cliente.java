@@ -21,11 +21,13 @@ public class Cliente {
         long recebidos;
         int tentativas = 0;
         while (true) {
+            // o tempo conta a partir do pedido de conexão, incluindo a espera na fila do servidor
             inicio = System.nanoTime();
             try (Socket socket = new Socket(host, porta)) {
                 recebidos = Transferencia.receber(socket);
                 break;
             } catch (ConnectException | UnknownHostException e) {
+                // o servidor pode ainda não estar pronto quando o container do cliente sobe
                 if (++tentativas == 60) {
                     throw e;
                 }

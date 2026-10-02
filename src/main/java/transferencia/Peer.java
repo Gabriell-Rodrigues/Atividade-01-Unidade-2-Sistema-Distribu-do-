@@ -27,6 +27,7 @@ import java.util.TreeMap;
 
 public class Peer {
 
+    // mesmo tamanho de pedaço usado pelo BitTorrent
     static final int TAMANHO_PEDACO = 256 * 1024;
 
     private final String nome;
@@ -38,6 +39,7 @@ public class Peer {
     private long tamanho = -1;
     private int totalPedacos;
     private BitSet pedacos;
+    // pedaços que alguma thread já está baixando, para não pedir o mesmo duas vezes
     private final BitSet emAndamento = new BitSet();
     private final Set<String> conectados = new HashSet<>();
     private final Map<String, Integer> origem = new TreeMap<>();
@@ -79,10 +81,12 @@ public class Peer {
         }
         long inicio = System.nanoTime();
 
+        // os pedaços ficam em disco porque precisam ser enviados para os outros peers
         Path parcial = Files.createTempFile("peer-" + nome + "-", ".part");
         parcial.toFile().deleteOnExit();
         preparar(FileChannel.open(parcial, StandardOpenOption.READ, StandardOpenOption.WRITE), false);
 
+        // uma thread de download para cada peer; a lista vem do tracker a cada segundo
         while (true) {
             for (String outro : outros) {
                 iniciarDownload(outro);
@@ -113,6 +117,7 @@ public class Peer {
         if (completo) {
             pedacos.set(0, totalPedacos);
         }
+        // o peer já envia os pedaços que tem enquanto baixa os que faltam
         new Thread(this::aceitarConexoes).start();
     }
 
@@ -166,6 +171,7 @@ public class Peer {
             while (!completo()) {
                 atual = escolherPedaco(doOutro);
                 if (atual < 0) {
+                    // o outro peer ainda não tem nada que falta; pede o mapa de novo
                     Thread.sleep(100);
                     doOutro = conexao.pedirMapa();
                     continue;
@@ -192,6 +198,7 @@ public class Peer {
         }
     }
 
+    // sorteia um pedaço que o outro peer tem e que ainda falta aqui
     synchronized int escolherPedaco(BitSet doOutro) {
         List<Integer> candidatos = new ArrayList<>();
         for (int i = doOutro.nextSetBit(0); i >= 0 && i < totalPedacos; i = doOutro.nextSetBit(i + 1)) {
@@ -248,6 +255,7 @@ public class Peer {
         try (socket) {
             DataInputStream entrada = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
             DataOutputStream saida = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), TAMANHO_PEDACO + 4));
+            // M: mapa dos pedaços que este peer tem; P: envio de um pedaço pelo índice
             while (true) {
                 byte comando = entrada.readByte();
                 if (comando == 'M') {

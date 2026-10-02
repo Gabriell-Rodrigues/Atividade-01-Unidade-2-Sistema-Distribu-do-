@@ -19,6 +19,7 @@ public class ServidorSequencial {
             System.out.println("servidor sequencial na porta " + porta + ", arquivo " + arquivo);
             while (true) {
                 Socket cliente = servidor.accept();
+                // envia na mesma thread: os outros clientes esperam na fila do accept
                 Transferencia.atender(cliente, arquivo);
             }
         }

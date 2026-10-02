@@ -18,6 +18,7 @@ public class Transferencia {
     public static void enviar(Path arquivo, Socket socket) throws IOException {
         DataOutputStream saida = new DataOutputStream(
                 new BufferedOutputStream(socket.getOutputStream(), TAMANHO_BUFFER));
+        // o tamanho vai antes do conteúdo para o cliente saber quando terminou
         saida.writeLong(Files.size(arquivo));
 
         byte[] buffer = new byte[TAMANHO_BUFFER];
@@ -39,6 +40,7 @@ public class Transferencia {
         }
     }
 
+    // faz todos os clientes começarem no mesmo instante, definido pelo script dos experimentos
     public static void esperarInicio() throws InterruptedException {
         String inicio = System.getenv("INICIO_MS");
         if (inicio != null && !inicio.isBlank()) {

@@ -7,6 +7,7 @@ CLIENTES=${CLIENTES:-"1 2 4 8"}
 ARQUITETURAS=${ARQUITETURAS:-"Sequencial Threads Pool P2P"}
 REPETICOES=${REPETICOES:-3}
 export BANDA_MBPS=${BANDA_MBPS:-100}
+# tamanho do pool de threads do ServidorPool
 export MAXIMO=${POOL:-2}
 
 PERFIS="--profile cs --profile p2p --profile arquivos"
@@ -45,6 +46,7 @@ rodar_cs() {
     docker compose $PERFIS logs --no-color servidor >> "$log" 2>&1
     return 1
   fi
+  # todos os clientes começam juntos, 10 s depois de agora
   export INICIO_MS=$(( $(agora_ms) + 10000 ))
   timeout "$limite" docker compose up --scale cliente="$n" cliente >> "$log" 2>&1
   docker compose $PERFIS logs --no-color servidor >> "$log" 2>&1
@@ -71,6 +73,7 @@ rodar_p2p() {
 
   ip_semeador=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
     "$(docker compose $PERFIS ps -q semeador)")
+  # quantos pedaços cada peer recebeu do semeador
   grep -oE "[^ ]+ origem dos pedacos: \{[^}]*\}" "$log" \
     | awk -v m="$mb" -v n="$n" -v r="$repeticao" -v s="$ip_semeador:" '{
         lista = $0
@@ -94,6 +97,7 @@ docker compose $PERFIS build gerador > /dev/null || exit 1
 docker compose run --rm gerador || exit 1
 
 total=$(( REPETICOES * $(echo $TAMANHOS | wc -w) * $(echo $CLIENTES | wc -w) * $(echo $ARQUITETURAS | wc -w) ))
+# a segunda passada repete apenas o que falhou na primeira
 for passada in 1 2; do
   falhas=0
   atual=0
@@ -103,11 +107,13 @@ for passada in 1 2; do
         for arquitetura in $ARQUITETURAS; do
           atual=$(( atual + 1 ))
           nome="${arquitetura}_${mb}MB_${n}clientes_rep${repeticao}"
+          # já medido: permite continuar de onde parou
           if grep -q "^$arquitetura,$mb,$n,$repeticao," "$TEMPOS"; then
             continue
           fi
 
           export ARQUIVO="arquivo_${mb}MB.bin"
+          # tempo limite: 3 vezes o tempo teórico do cliente-servidor, mais 90 s
           limite=$(awk -v m="$mb" -v n="$n" -v b="$BANDA_MBPS" 'BEGIN { printf "%d", 3 * n * m * 1048576 * 8 / (b * 1e6) + 90 }')
           log="resultados/logs/$nome.log"
           echo "[$atual/$total] $nome $(date '+%H:%M:%S')"

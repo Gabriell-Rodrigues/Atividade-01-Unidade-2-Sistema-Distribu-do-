@@ -19,6 +19,7 @@ public class ServidorThreads {
             System.out.println("servidor com uma thread por cliente na porta " + porta + ", arquivo " + arquivo);
             while (true) {
                 Socket cliente = servidor.accept();
+                // uma thread por conexão: todos os clientes são atendidos ao mesmo tempo
                 new Thread(() -> Transferencia.atender(cliente, arquivo)).start();
             }
         }

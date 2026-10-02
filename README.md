@@ -1,76 +1,43 @@
 # Transferência de arquivos: cliente-servidor x P2P
 
-Atividade 01 da Unidade 2 de Sistemas Distribuídos (COMP0470, UFS).
+Atividade 01 da Unidade 2 de Sistemas Distribuídos (COMP0470, UFS), Prof. Rafael Oliveira Vasconcelos.
 
-Avaliação de desempenho da transferência de um arquivo usando a arquitetura cliente-servidor (servidor sequencial, servidor com uma thread por cliente e servidor com pool de threads) e a arquitetura P2P, variando o tamanho do arquivo e a quantidade de clientes.
+Avaliação de desempenho da transferência de um arquivo nas arquiteturas cliente-servidor (servidor sequencial, servidor com uma thread por cliente e servidor com pool de threads) e P2P, variando o tamanho do arquivo e a quantidade de clientes. O relatório está em [relatorio/relatorio.pdf](relatorio/relatorio.pdf).
 
-## Arquivos de teste
+## Estrutura
 
-Os arquivos usados nos testes (5 MB, 50 MB e 500 MB) não ficam no repositório. Para gerar na pasta `arquivos`:
+- `src/main/java/transferencia`: código em Java 17
+  - `ServidorSequencial`, `ServidorThreads` e `ServidorPool`: as três variações do servidor
+  - `Cliente`: recebe o arquivo, descarta os bytes e mostra o tempo
+  - `Tracker` e `Peer`: programa P2P, com pedaços de 256 KB como no BitTorrent
+  - `LimiteBanda`: limite de upload de cada nó
+  - `GeradorArquivos`: gera os arquivos de teste de 5, 50 e 500 MB
+- `scripts`: execução dos experimentos, análise dos resultados e diagnóstico do disco
+- `resultados`: tempos medidos, resumo e gráficos
+- `relatorio`: relatório em PDF
 
-```bash
-mvn package
-java -cp target/transferencia.jar transferencia.GeradorArquivos arquivos 5 50 500
-```
+## Como simular
 
-## Cliente-servidor
+Precisa do Docker com o Compose e do bash (no Windows, pelo WSL). Para os gráficos, Python 3 com matplotlib.
 
-O servidor envia o tamanho do arquivo e depois o conteúdo. O cliente recebe tudo, descarta os bytes e mostra o tempo desde a conexão até o último byte.
+Cada servidor, cliente e peer roda em um container, com upload limitado a 100 Mbit/s. Sem esse limite, como os containers estão na mesma máquina, a transferência seria quase instantânea e não daria para comparar as arquiteturas.
 
-Servidor sequencial (atende um cliente por vez):
-
-```bash
-java -cp target/transferencia.jar transferencia.ServidorSequencial 5000 arquivos/arquivo_50MB.bin
-```
-
-Servidor com uma thread por cliente (atende todos ao mesmo tempo):
-
-```bash
-java -cp target/transferencia.jar transferencia.ServidorThreads 5000 arquivos/arquivo_50MB.bin
-```
-
-Servidor com pool de threads (atende no máximo N clientes ao mesmo tempo, aqui N = 4):
+### Todos os experimentos
 
 ```bash
-java -cp target/transferencia.jar transferencia.ServidorPool 5000 arquivos/arquivo_50MB.bin 4
+bash scripts/experimentos.sh
+python scripts/analisar.py
 ```
 
-Cliente:
+O primeiro script gera a imagem e os arquivos de teste e roda as 144 combinações: sequencial, thread por cliente, pool de 2 threads e P2P, com arquivos de 5, 50 e 500 MB, 1, 2, 4 e 8 clientes e 3 repetições. Em cada execução os clientes começam no mesmo instante. Leva cerca de 3 horas e, se for interrompido, continua de onde parou. O segundo calcula os tempos mínimo, médio e máximo (`resultados/resumo.csv`) e gera os gráficos.
+
+Como os resultados já estão no repositório, o script pula o que já foi medido. Para medir de novo, apague antes `resultados/tempos.csv` e `resultados/origem_p2p.csv`. Para uma rodada rápida:
 
 ```bash
-java -cp target/transferencia.jar transferencia.Cliente localhost 5000 cliente1
+TAMANHOS=5 CLIENTES="1 2" REPETICOES=1 bash scripts/experimentos.sh
 ```
 
-## P2P
-
-O arquivo é dividido em pedaços de 256 KB. O tracker guarda a lista de peers e o tamanho do arquivo. Cada peer abre uma conexão com cada outro peer, pede o mapa dos pedaços que ele tem e baixa, em paralelo, pedaços escolhidos ao acaso entre os que ainda faltam. Ao mesmo tempo, envia para os outros os pedaços que já tem. Quando termina, mostra de quais peers recebeu os pedaços e continua compartilhando o arquivo.
-
-Tracker:
-
-```bash
-java -cp target/transferencia.jar transferencia.Tracker 6000
-```
-
-Peer que começa com o arquivo completo (semeador):
-
-```bash
-java -cp target/transferencia.jar transferencia.Peer localhost 6000 7000 semeador arquivos/arquivo_50MB.bin
-```
-
-Peers que baixam o arquivo (cada um em uma porta):
-
-```bash
-java -cp target/transferencia.jar transferencia.Peer localhost 6000 7001 peer1
-java -cp target/transferencia.jar transferencia.Peer localhost 6000 7002 peer2
-```
-
-## Limite de banda
-
-A variável de ambiente `BANDA_MBPS` limita o upload de cada servidor e de cada peer (em Mbit/s). Todas as threads de um mesmo processo dividem esse limite, como se fosse a placa de rede do nó. Sem a variável não há limite.
-
-## Docker
-
-Cada servidor, cliente e peer roda em um container, com upload limitado a 100 Mbit/s por padrão. Sem esse limite, como os containers estão na mesma máquina, a transferência seria quase instantânea e não daria para comparar as arquiteturas.
+### Um cenário de cada vez
 
 Gerar a imagem e os arquivos de teste (uma vez):
 
@@ -78,7 +45,7 @@ Gerar a imagem e os arquivos de teste (uma vez):
 docker compose run --rm gerador
 ```
 
-Cliente-servidor (`MODO` pode ser `Sequencial`, `Threads` ou `Pool`; `MAXIMO` é o tamanho do pool):
+Cliente-servidor com 4 clientes. `MODO` pode ser `Sequencial`, `Threads` ou `Pool`, e `MAXIMO` é o tamanho do pool:
 
 ```bash
 MODO=Threads ARQUIVO=arquivo_50MB.bin docker compose up -d servidor
@@ -86,7 +53,7 @@ docker compose up --scale cliente=4 cliente
 docker compose --profile cs down
 ```
 
-P2P:
+P2P com 4 peers, além do semeador:
 
 ```bash
 ARQUIVO=arquivo_50MB.bin docker compose up -d tracker semeador
@@ -95,24 +62,40 @@ docker compose logs -f peer
 docker compose --profile p2p down
 ```
 
-No PowerShell, as variáveis são definidas antes do comando com `$env:MODO="Threads"`, `$env:ARQUIVO="arquivo_50MB.bin"` e `$env:BANDA_MBPS="100"`.
+O limite de upload muda com `BANDA_MBPS` (em Mbit/s). No PowerShell, as variáveis são definidas antes do comando, por exemplo `$env:MODO="Threads"`.
 
-## Experimentos
-
-O script `scripts/experimentos.sh` (bash, com Docker) roda todas as combinações de arquitetura (Sequencial, Threads, Pool com N = 2 e P2P), tamanho do arquivo (5, 50 e 500 MB) e quantidade de clientes (1, 2, 4 e 8), com 3 repetições e upload de 100 Mbit/s em cada nó. Em cada experimento os clientes (ou peers) começam no mesmo instante. O tempo de cada cliente fica em `resultados/tempos.csv` e, no P2P, a quantidade de pedaços que cada peer recebeu do semeador fica em `resultados/origem_p2p.csv`. Se o script for interrompido, ao rodar de novo ele continua de onde parou.
+### Sem Docker
 
 ```bash
-bash scripts/experimentos.sh
+mvn package
+java -cp target/transferencia.jar transferencia.GeradorArquivos arquivos 5 50 500
+
+java -cp target/transferencia.jar transferencia.ServidorPool 5000 arquivos/arquivo_50MB.bin 4
+java -cp target/transferencia.jar transferencia.Cliente localhost 5000 cliente1
+
+java -cp target/transferencia.jar transferencia.Tracker 6000
+java -cp target/transferencia.jar transferencia.Peer localhost 6000 7000 semeador arquivos/arquivo_50MB.bin
+java -cp target/transferencia.jar transferencia.Peer localhost 6000 7001 peer1
 ```
 
-Os parâmetros podem ser trocados por variáveis de ambiente, por exemplo para uma rodada rápida:
+Os outros servidores são iniciados da mesma forma, sem o último argumento (`ServidorSequencial` e `ServidorThreads`). Cada peer precisa de uma porta diferente.
+
+## Resultados
+
+Tempo máximo, em segundos, para os 8 clientes receberem o arquivo:
+
+| Arquivo | Sequencial | Thread por cliente | Pool de 2 threads | P2P |
+|---|---:|---:|---:|---:|
+| 5 MB | 3,40 | 3,41 | 3,41 | 1,29 |
+| 50 MB | 33,64 | 33,64 | 33,61 | 5,49 |
+| 500 MB | 335,62 | 335,63 | 335,62 | 181,31 |
+
+No cliente-servidor o tempo máximo das três variações é praticamente N·F/us, porque o upload do servidor é o gargalo; o que muda entre elas é o tempo médio. No P2P os peers repassam os pedaços entre si e o tempo quase não cresce com a quantidade de clientes. Os tempos mínimo, médio e máximo de todas as combinações estão em `resultados/resumo.csv`.
+
+![Tempos com o arquivo de 50 MB](resultados/grafico_50MB.png)
+
+Com 500 MB o P2P ficou acima do tempo previsto porque cada peer grava os pedaços em disco e todos os containers dividem o mesmo disco da máquina. Os registros dessa medição estão em `resultados/diagnostico` e podem ser refeitos com:
 
 ```bash
-TAMANHOS=5 CLIENTES="1 2" REPETICOES=1 bash scripts/experimentos.sh
-```
-
-Depois, o script de análise calcula o tempo mínimo, médio e máximo de cada experimento (`resultados/resumo.csv`) e gera os gráficos (`resultados/grafico_5MB.png`, `grafico_50MB.png` e `grafico_500MB.png`). Precisa do matplotlib.
-
-```bash
-python scripts/analisar.py
+bash scripts/diagnostico.sh 500 8
 ```
