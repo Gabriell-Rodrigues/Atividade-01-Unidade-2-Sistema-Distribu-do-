@@ -96,3 +96,23 @@ docker compose --profile p2p down
 ```
 
 No PowerShell, as variáveis são definidas antes do comando com `$env:MODO="Threads"`, `$env:ARQUIVO="arquivo_50MB.bin"` e `$env:BANDA_MBPS="100"`.
+
+## Experimentos
+
+O script `scripts/experimentos.sh` (bash, com Docker) roda todas as combinações de arquitetura (Sequencial, Threads, Pool com N = 2 e P2P), tamanho do arquivo (5, 50 e 500 MB) e quantidade de clientes (1, 2, 4 e 8), com 3 repetições e upload de 100 Mbit/s em cada nó. Em cada experimento os clientes (ou peers) começam no mesmo instante. O tempo de cada cliente fica em `resultados/tempos.csv` e, no P2P, a quantidade de pedaços que cada peer recebeu do semeador fica em `resultados/origem_p2p.csv`. Se o script for interrompido, ao rodar de novo ele continua de onde parou.
+
+```bash
+bash scripts/experimentos.sh
+```
+
+Os parâmetros podem ser trocados por variáveis de ambiente, por exemplo para uma rodada rápida:
+
+```bash
+TAMANHOS=5 CLIENTES="1 2" REPETICOES=1 bash scripts/experimentos.sh
+```
+
+Depois, o script de análise calcula o tempo mínimo, médio e máximo de cada experimento (`resultados/resumo.csv`) e gera os gráficos (`resultados/grafico_5MB.png`, `grafico_50MB.png` e `grafico_500MB.png`). Precisa do matplotlib.
+
+```bash
+python scripts/analisar.py
+```

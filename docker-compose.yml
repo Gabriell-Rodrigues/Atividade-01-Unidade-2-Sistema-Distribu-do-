@@ -24,6 +24,8 @@ services:
   cliente:
     <<: *app
     profiles: ["cs"]
+    environment:
+      INICIO_MS: ${INICIO_MS:-}
     command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Cliente servidor 5000 $$HOSTNAME"]
 
   tracker:
@@ -37,6 +39,8 @@ services:
     environment:
       BANDA_MBPS: ${BANDA_MBPS:-100}
       ARQUIVO: ${ARQUIVO:-arquivo_50MB.bin}
+    depends_on:
+      - tracker
     command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Peer tracker 6000 7000 semeador /arquivos/$$ARQUIVO"]
 
   peer:
@@ -44,6 +48,7 @@ services:
     profiles: ["p2p"]
     environment:
       BANDA_MBPS: ${BANDA_MBPS:-100}
+      INICIO_MS: ${INICIO_MS:-}
     command: ["sh", "-c", "java -Xmx256m -cp app.jar transferencia.Peer tracker 6000 7000 $$HOSTNAME"]
 
 volumes:

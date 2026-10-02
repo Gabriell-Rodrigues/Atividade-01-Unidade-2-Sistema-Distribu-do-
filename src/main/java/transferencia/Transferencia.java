@@ -39,6 +39,16 @@ public class Transferencia {
         }
     }
 
+    public static void esperarInicio() throws InterruptedException {
+        String inicio = System.getenv("INICIO_MS");
+        if (inicio != null && !inicio.isBlank()) {
+            long espera = Long.parseLong(inicio) - System.currentTimeMillis();
+            if (espera > 0) {
+                Thread.sleep(espera);
+            }
+        }
+    }
+
     public static long receber(Socket socket) throws IOException {
         DataInputStream entrada = new DataInputStream(
                 new BufferedInputStream(socket.getInputStream(), TAMANHO_BUFFER));

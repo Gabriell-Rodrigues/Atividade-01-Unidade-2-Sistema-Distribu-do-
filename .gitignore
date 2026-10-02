@@ -1,5 +1,6 @@
 target/
 arquivos/
+resultados/logs/
 *.class
 .idea/
 .vscode/

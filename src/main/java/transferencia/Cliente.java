@@ -2,6 +2,7 @@ package transferencia;
 
 import java.net.ConnectException;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Locale;
 
 public class Cliente {
@@ -14,6 +15,7 @@ public class Cliente {
         String host = args[0];
         int porta = Integer.parseInt(args[1]);
         String nome = args.length > 2 ? args[2] : "cliente";
+        Transferencia.esperarInicio();
 
         long inicio;
         long recebidos;
@@ -23,7 +25,7 @@ public class Cliente {
             try (Socket socket = new Socket(host, porta)) {
                 recebidos = Transferencia.receber(socket);
                 break;
-            } catch (ConnectException e) {
+            } catch (ConnectException | UnknownHostException e) {
                 if (++tentativas == 60) {
                     throw e;
                 }

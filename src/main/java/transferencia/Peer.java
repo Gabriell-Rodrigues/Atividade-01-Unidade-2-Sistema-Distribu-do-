@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -70,6 +71,7 @@ public class Peer {
     }
 
     void baixar() throws Exception {
+        Transferencia.esperarInicio();
         List<String> outros = registrarComEspera();
         while (tamanho < 0) {
             Thread.sleep(500);
@@ -119,7 +121,7 @@ public class Peer {
         while (true) {
             try {
                 return registrar();
-            } catch (ConnectException e) {
+            } catch (ConnectException | UnknownHostException e) {
                 if (++tentativas == 60) {
                     throw e;
                 }
